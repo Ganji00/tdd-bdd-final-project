@@ -27,7 +27,7 @@ import os
 import logging
 import unittest
 from decimal import Decimal
-from service.models import Product, Category, db
+from service.models import Product, Category, db, DataValidationError
 from service import app
 from tests.factories import ProductFactory
 
@@ -101,6 +101,120 @@ class TestProductModel(unittest.TestCase):
         self.assertEqual(new_product.available, product.available)
         self.assertEqual(new_product.category, product.category)
 
-    #
-    # ADD YOUR TEST CASES HERE
-    #
+    def test_deserialize_invalid_attribute(self):
+        """It should raise DataValidationError for invalid attribute"""
+        product_data = {
+            "name": "TestProduct",
+            "description": "Invalid attribute example",
+            "price": "10.00",
+            "available": True,
+            "category": "INVALID_CATEGORY"  # invalid category
+        }
+        product = Product()
+        with self.assertRaises(DataValidationError) as context:
+            product.deserialize(product_data)
+        self.assertIn("Invalid attribute:", str(context.exception))
+
+    def test_update_product(self):
+        """It should Update an existing product's attributes"""
+        product = ProductFactory()
+        product.create()
+        product.description = "Updated description"
+        product.update()
+        # Retrieve to check if updates persist
+        updated_product = Product.find(product.id)
+        self.assertEqual(updated_product.description, "Updated description")
+
+    def test_delete_product(self):
+        """It should Delete a product from the database"""
+        product = ProductFactory()
+        product.create()
+        self.assertIsNotNone(Product.find(product.id))
+        product.delete()
+        self.assertIsNone(Product.find(product.id))
+
+    def test_find_by_name(self):
+        """It should find products by name"""
+        product_name = "SpecialProduct"
+        products = [ProductFactory(name=product_name) for _ in range(3)]
+        for product in products:
+            product.create()
+        found = Product.find_by_name(product_name).all()
+        self.assertEqual(len(found), 3)
+        for prod in found:
+            self.assertEqual(prod.name, product_name)
+
+    def test_find_by_availability(self):
+        """It should find products by availability"""
+        products = ProductFactory.create_batch(5)
+        for product in products:
+            product.available = True
+            product.create()
+        unavailable_product = ProductFactory(available=False)
+        unavailable_product.create()
+        available_products = Product.find_by_availability(True).all()
+        self.assertEqual(len(available_products), 5)
+        for prod in available_products:
+            self.assertTrue(prod.available)
+
+    def test_find_by_category(self):
+        """It should find products by category"""
+        category = Category.FOOD
+        products = [ProductFactory(category=category) for _ in range(3)]
+        for product in products:
+            product.create()
+        found = Product.find_by_category(category).all()
+        self.assertEqual(len(found), 3)
+        for prod in found:
+            self.assertEqual(prod.category, category)
+
+    def test_deserialize_invalid_type_available(self):
+        """It should raise DataValidationError for invalid available type"""
+        product_data = {
+            "name": "TestProduct",
+            "description": "Invalid available type example",
+            "price": "12.50",
+            "available": "yes",  # invalid type
+            "category": "TOOLS"
+        }
+        product = Product()
+        with self.assertRaises(DataValidationError) as context:
+            product.deserialize(product_data)
+        self.assertIn("Invalid type for boolean [available]:", str(context.exception))
+
+    def test_deserialize_bad_data(self):
+        """It should raise DataValidationError for bad data"""
+        product = Product()
+        with self.assertRaises(DataValidationError) as context:
+            product.deserialize("bad data")
+        self.assertIn("Invalid product: body of request contained bad or no data", str(context.exception))
+
+    def test_list_all_products(self):
+        """It should list all products in the database"""
+        product_list = ProductFactory.create_batch(5)
+        for product in product_list:
+            product.create()
+        products = Product.all()
+        self.assertEqual(len(products), 5)
+        for prod in products:
+            self.assertIsNotNone(prod.id)
+
+    def test_verify_reading_product(self):
+        """It should verify if the reading functionality works correctly"""
+        product = ProductFactory()
+        product.create()
+        retrieved_product = Product.find(product.id)
+        self.assertEqual(retrieved_product.id, product.id)
+        self.assertEqual(retrieved_product.name, product.name)
+        self.assertEqual(retrieved_product.description, product.description)
+        self.assertEqual(retrieved_product.price, product.price)
+        self.assertEqual(retrieved_product.available, product.available)
+        self.assertEqual(retrieved_product.category, product.category)
+
+    def test_update_a_product_without_id(self):
+        """It should raise DataValidationError if attempting to update without an ID"""
+        product = ProductFactory()
+        product.id = None  # Simula un prodotto senza ID
+        with self.assertRaises(DataValidationError) as context:
+            product.update()  # Deve sollevare DataValidationError
+        self.assertEqual(str(context.exception), "Update called with empty ID field")
